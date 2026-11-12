@@ -1,0 +1,1157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Remote Camera</title>
+<meta name="theme-color" content="#14181c">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;600;700&family=Noto+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Layout: single phone-width column. Remote view = link card, live stage, filter strip, mode toggle, shutter row, gallery. Camera view = permission card, small preview, status card. */
+  :root {
+    --bg: #eef1f3;
+    --surface: #ffffff;
+    --surface-2: #e3e8eb;
+    --fg: #15191d;
+    --muted: #5a666f;
+    --line: #cfd6db;
+    --accent: #d9411e;
+    --accent-fg: #ffffff;
+    --ok: #1b8a5a;
+    --warn: #b7791f;
+    --font: "Hind Siliguri", "Noto Sans Devanagari", "Noto Sans Arabic", system-ui, -apple-system, "Segoe UI", sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101417; --surface: #1a2025; --surface-2: #252d33; --fg: #eaeff2; --muted: #93a1ab;
+      --line: #2f3940; --accent: #ff5a36; --accent-fg: #1a0a05; --ok: #3ecf8e; --warn: #f0b24a;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #101417; --surface: #1a2025; --surface-2: #252d33; --fg: #eaeff2; --muted: #93a1ab;
+    --line: #2f3940; --accent: #ff5a36; --accent-fg: #1a0a05; --ok: #3ecf8e; --warn: #f0b24a;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 16px; line-height: 1.55;
+    padding-block: max(14px, env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    -webkit-tap-highlight-color: transparent;
+  }
+  .wrap { max-width: 520px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  .langbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .langbar label { font-size: .9rem; color: var(--muted); }
+  select {
+    font: inherit; font-size: .95rem; color: var(--fg); background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; padding: 8px 12px; min-height: 40px; max-width: 60%;
+  }
+  select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  h1 { font-size: 1.25rem; margin: 0; font-weight: 700; text-wrap: balance; }
+  h2 { font-size: 1rem; margin: 0 0 4px; font-weight: 600; }
+  p { margin: 0; }
+  .muted { color: var(--muted); font-size: .9rem; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--line); font-size: .85rem;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--warn); flex: none; }
+  .pill[data-s="ok"] .dot { background: var(--ok); }
+  .pill[data-s="bad"] .dot { background: var(--accent); }
+  .pill[data-s="rec"] .dot { background: var(--accent); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .linkbox {
+    width: 100%; font: inherit; font-size: .85rem; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--fg); direction: ltr; text-align: left;
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 110px; }
+  button, .btn {
+    font: inherit; font-weight: 600; padding: 11px 14px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--fg); cursor: pointer; text-align: center; text-decoration: none; min-height: 44px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  button:focus-visible, .btn:focus-visible, .linkbox:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .stage {
+    position: relative; background: #000; border-radius: 14px; overflow: hidden; aspect-ratio: 3 / 4; width: 100%; max-height: 62vh;
+    display: grid; place-items: center; margin-inline: auto;
+  }
+  .stage video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+  .stage .msg { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: #cdd6dc; font-size: .95rem; }
+  .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity .35s ease-out; }
+  .flash.on { opacity: .9; transition: none; }
+  .count { position: absolute; inset: 0; display: grid; place-items: center; font-size: 6rem; font-weight: 700; color: #fff; text-shadow: 0 2px 18px rgba(0,0,0,.6); pointer-events: none; }
+  .rec {
+    position: absolute; top: 10px; inset-inline-start: 10px; display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(0,0,0,.6); color: #fff; padding: 4px 12px; border-radius: 999px; font-size: .85rem; font-variant-numeric: tabular-nums;
+  }
+  .rec .rdot { width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; animation: pulse 1s infinite; }
+  .filters { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+  .chip { flex: none; min-height: 38px; padding: 6px 14px; border-radius: 999px; font-weight: 500; font-size: .9rem; white-space: nowrap; }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  .seg { display: flex; justify-content: center; }
+  .seg .inner { display: inline-flex; background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px; gap: 2px; }
+  .seg button { border: 0; background: transparent; min-height: 38px; padding: 4px 22px; border-radius: 999px; }
+  .seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+  .controls { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; }
+  .controls .side { display: flex; }
+  .controls .side.end { justify-content: flex-end; }
+  .shutter { position: relative; width: 76px; height: 76px; border-radius: 50%; padding: 0; border: 4px solid var(--fg); background: transparent; min-height: 0; }
+  .shutter::after { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: var(--fg); transition: inset .15s, border-radius .15s, background .15s; }
+  .shutter.vid::after { background: var(--accent); }
+  .shutter.on::after { inset: 20px; border-radius: 8px; background: var(--accent); }
+  .shutter:active { transform: scale(.94); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .thumb { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; padding: 0; border: 1px solid var(--line); background: var(--surface-2); min-height: 0; display: block; }
+  .thumb img, .thumb video { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+  .thumb .play {
+    position: absolute; inset-inline-end: 6px; bottom: 6px; width: 26px; height: 26px; border-radius: 50%; background: rgba(0,0,0,.65);
+  }
+  .thumb .play::after { content: ""; position: absolute; inset: 7px 7px 7px 10px; border-style: solid; border-width: 6px 0 6px 10px; border-color: transparent transparent transparent #fff; }
+  .viewer { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.94); display: flex; flex-direction: column; gap: 10px;
+    padding: max(12px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); }
+  .viewer img, .viewer video { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #000; }
+  .viewer .row button { background: #2a3238; color: #eef3f6; border-color: #3a444b; }
+  .toast {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: max(20px, env(safe-area-inset-bottom, 0px)); z-index: 30;
+    background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: .9rem; max-width: 90vw; text-align: center;
+  }
+  .note { border-inline-start: 3px solid var(--warn); padding: 6px 10px; background: var(--surface-2); border-radius: 8px; font-size: .9rem; }
+  @media (prefers-reduced-motion: reduce) { .flash, .shutter::after { transition: none; } .pill[data-s="rec"] .dot, .rec .rdot { animation: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="langbar">
+    <label for="langSel" data-k="lang">Language</label>
+    <select id="langSel"></select>
+  </div>
+
+  <!-- ====== Remote phone: photos and videos are collected here ====== -->
+  <section id="remoteView" hidden>
+    <div class="wrap">
+      <header>
+        <h1 data-k="app_remote">Remote Camera</h1>
+        <span class="pill" id="rStatus" data-s="wait"><span class="dot"></span><span id="rStatusText"></span></span>
+      </header>
+
+      <div class="card" id="linkCard">
+        <div>
+          <h2 data-k="link_h"></h2>
+          <p class="muted" data-k="link_p"></p>
+        </div>
+        <input class="linkbox" id="linkBox" readonly value="" aria-label="Link">
+        <div class="row">
+          <button class="primary" id="shareBtn" type="button" data-k="share"></button>
+          <button id="copyBtn" type="button" data-k="copy"></button>
+          <a class="btn" id="waBtn" href="#" target="_blank" rel="noopener">WhatsApp</a>
+        </div>
+        <p class="note" id="fileWarn" data-k="file_warn" hidden></p>
+      </div>
+
+      <div class="stage" id="rStage">
+        <video id="rVideo" playsinline autoplay muted></video>
+        <div class="msg" id="rMsg"></div>
+        <div class="flash" id="rFlash"></div>
+        <div class="count" id="rCount" hidden></div>
+        <div class="rec" id="rRec" hidden><span class="rdot"></span><span id="rTime">00:00</span></div>
+      </div>
+      <p class="muted" id="rxInfo" hidden></p>
+
+      <div class="filters" id="filters" role="group"></div>
+
+      <div class="seg">
+        <div class="inner" role="group">
+          <button type="button" id="modePhoto" aria-pressed="true" data-k="mode_photo"></button>
+          <button type="button" id="modeVideo" aria-pressed="false" data-k="mode_video"></button>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="side"><button id="flipBtn" type="button" data-k="flip" disabled></button></div>
+        <button class="shutter" id="shotBtn" type="button" disabled></button>
+        <div class="side end"><button id="timerBtn" type="button"></button></div>
+      </div>
+
+      <div class="card">
+        <h2><span data-k="gal_h"></span> <span id="photoCount" class="muted"></span></h2>
+        <div class="grid" id="grid"></div>
+        <p class="muted" id="emptyGal" data-k="gal_empty"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== Camera phone ====== -->
+  <section id="cameraView" hidden>
+    <div class="wrap">
+      <header>
+        <h1 data-k="app_camera">Camera Phone</h1>
+        <span class="pill" id="cStatus" data-s="wait"><span class="dot"></span><span id="cStatusText"></span></span>
+      </header>
+
+      <div class="card" id="startCard">
+        <div>
+          <h2 data-k="c_start_h"></h2>
+          <p class="muted" data-k="c_start_p"></p>
+        </div>
+        <button class="primary" id="startBtn" type="button" data-k="c_start_btn"></button>
+        <p class="note" id="camErr" hidden></p>
+      </div>
+
+      <div class="stage" id="cStage" hidden>
+        <video id="cVideo" playsinline autoplay muted></video>
+        <div class="flash" id="cFlash"></div>
+      </div>
+
+      <div class="card" id="liveCard" hidden>
+        <p id="liveText"></p>
+        <p class="muted" data-k="c_note"></p>
+        <p class="muted" id="sentCount"></p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="viewer" id="viewer" hidden>
+  <img id="viewImg" alt="">
+  <video id="viewVid" controls playsinline hidden></video>
+  <div class="row">
+    <button id="vSave" type="button" data-k="save"></button>
+    <button id="vShare" type="button" data-k="share"></button>
+    <button id="vDel" type="button" data-k="del"></button>
+    <button id="vClose" type="button" data-k="close"></button>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ICE servers for the connection. On some mobile networks a direct link is impossible;
+  // add your own TURN server here if the two phones fail to connect.
+  var ICE_SERVERS = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:global.stun.twilio.com:3478" }
+  ];
+
+  /* ---------------------------------------------------------------
+     Languages. To add one: add an entry to LANGS and a block to I18N.
+     Missing keys fall back to English.
+     --------------------------------------------------------------- */
+  var LANGS = [
+    { c: "en", n: "English", l: "en" },
+    { c: "bn", n: "বাংলা", l: "bn-BD" },
+    { c: "hi", n: "हिन्दी", l: "hi-IN" },
+    { c: "ur", n: "اردو", l: "ur-PK", rtl: 1 },
+    { c: "ar", n: "العربية", l: "ar", rtl: 1 },
+    { c: "es", n: "Español", l: "es" },
+    { c: "fr", n: "Français", l: "fr" },
+    { c: "id", n: "Bahasa Indonesia", l: "id" }
+  ];
+
+  var I18N = {
+    en: {
+      app_remote: "Remote Camera", app_camera: "Camera Phone", lang: "Language",
+      s_prep: "Getting ready…", s_wait: "Waiting for camera phone", s_ok: "Camera connected", s_lib: "Library failed to load", s_srv: "Server connection lost", s_err: "Connection problem",
+      link_h: "1. Send this link to the camera phone",
+      link_p: "Send this link on WhatsApp or Messenger to the phone with the better camera. Keep this page open.",
+      link_making: "Creating link…", wa_msg: "Open this link and allow camera access:",
+      share: "Share", copy: "Copy", copied: "Link copied", copy_hold: "Press and hold the link to copy it",
+      file_warn: "This will not work when the file is opened directly. Upload it to an https website first.",
+      stage_msg: "Open the link on the camera phone and allow camera access. The live view will appear here.",
+      stage_lost: "The camera phone disconnected. Check that the page is still open there.",
+      stage_end: "Live view stopped.",
+      flip: "Switch camera", timer_off: "Timer: off", timer_on: "Timer: {n}s",
+      mode_photo: "Photo", mode_video: "Video",
+      f_none: "Original", f_bw: "Black & white", f_sepia: "Sepia", f_vintage: "Vintage", f_warm: "Warm", f_cool: "Cool", f_vivid: "Vivid", f_fade: "Fade", f_drama: "Drama",
+      shutter_photo: "Take photo", shutter_start: "Start recording", shutter_stop: "Stop recording",
+      gal_h: "Saved on this phone", gal_empty: "Photos and videos you take are saved here, inside this browser. Tap one and press Save to move it to your gallery.",
+      count: "{n} items", save: "Save", del: "Delete", close: "Close",
+      save_hint: "Saving started. If nothing happens, press and hold the photo and choose Save.",
+      share_na: "Sharing is not available in this browser. Use Save.", confirm_del: "Delete this item?",
+      cam_on: "Camera phone connected", got_photo: "Photo saved", got_video: "Video saved", rx: "Receiving video… {n}%",
+      no_cam: "The camera phone is not connected", slow: "The photo is taking too long. Check the connection.", no_rec: "This browser cannot record video", net_lib: "Check your internet and reload the page",
+      c_start_h: "Turn on the camera", c_start_p: "Press the button and allow camera and microphone access when the browser asks. The front (selfie) camera starts first.", c_start_btn: "Allow camera",
+      c_status_wait: "Waiting for permission", s_conn: "Connecting", s_linked: "Connected to remote", s_nf: "Remote phone not found", s_rec: "Recording", s_send: "Sending",
+      c_live_wait: "Connecting to the remote phone…", c_live_ok: "Connected. Take photos and videos from the remote phone.", c_retry: "Check that the page is open on the remote phone. Trying again…", c_dropped: "Disconnected. Trying again…",
+      c_rec: "Recording video…", c_send: "Sending video to the remote phone…", c_note: "Nothing is saved on this phone. Everything is sent to the remote phone. Keep this page open and the screen on.", c_sent: "Items sent: {n}",
+      e_unsup: "The camera is not available here. Make sure the address starts with https and use Chrome or Safari.",
+      e_denied: "Camera access was not allowed. Tap the lock icon next to the address, allow the camera, then try again.",
+      e_nf: "No camera found on this phone.", e_busy: "Another app is using the camera. Close it and try again.", e_gen: "Could not start the camera. Try again.",
+      e_flip: "Could not switch camera", e_shot: "Could not take the photo", e_rec: "Could not start recording"
+    },
+    bn: {
+      app_remote: "রিমোট ক্যামেরা", app_camera: "ক্যামেরা ফোন", lang: "ভাষা",
+      s_prep: "প্রস্তুত হচ্ছে…", s_wait: "ক্যামেরা ফোনের অপেক্ষায়", s_ok: "ক্যামেরা সংযুক্ত", s_lib: "লাইব্রেরি লোড হয়নি", s_srv: "সার্ভার সংযোগ নেই", s_err: "সংযোগে সমস্যা",
+      link_h: "১. ক্যামেরা ফোনে এই লিংক পাঠান",
+      link_p: "WhatsApp বা Messenger-এ এই লিংক ভালো ক্যামেরার ফোনে পাঠান। এই পেজ খোলা রাখুন।",
+      link_making: "লিংক তৈরি হচ্ছে…", wa_msg: "এই লিংক খুলে ক্যামেরার অনুমতি দিন:",
+      share: "শেয়ার", copy: "কপি", copied: "লিংক কপি হয়েছে", copy_hold: "লিংকটি চেপে ধরে কপি করুন",
+      file_warn: "ফাইল সরাসরি খুললে এটি চলবে না। আগে https ওয়েবসাইটে আপলোড করুন।",
+      stage_msg: "ক্যামেরা ফোনে লিংক খুলে ক্যামেরার অনুমতি দিন। এখানে লাইভ ছবি দেখা যাবে।",
+      stage_lost: "ক্যামেরা ফোনের সংযোগ বিচ্ছিন্ন হয়েছে। ওই ফোনে পেজ খোলা আছে কি না দেখুন।",
+      stage_end: "লাইভ ছবি বন্ধ হয়েছে।",
+      flip: "ক্যামেরা বদলান", timer_off: "টাইমার: বন্ধ", timer_on: "টাইমার: {n} সেকেন্ড",
+      mode_photo: "ছবি", mode_video: "ভিডিও",
+      f_none: "আসল", f_bw: "সাদা-কালো", f_sepia: "সেপিয়া", f_vintage: "ভিন্টেজ", f_warm: "উষ্ণ", f_cool: "শীতল", f_vivid: "উজ্জ্বল", f_fade: "ফেড", f_drama: "নাটকীয়",
+      shutter_photo: "ছবি তুলুন", shutter_start: "রেকর্ড শুরু করুন", shutter_stop: "রেকর্ড বন্ধ করুন",
+      gal_h: "এই ফোনে জমা", gal_empty: "তোলা ছবি ও ভিডিও এই ব্রাউজারে জমা হবে। গ্যালারিতে নিতে একটিতে ট্যাপ করে “সংরক্ষণ” চাপুন।",
+      count: "{n}টি", save: "সংরক্ষণ", del: "মুছুন", close: "বন্ধ",
+      save_hint: "সংরক্ষণ শুরু হয়েছে। না হলে ছবিতে চেপে ধরে সংরক্ষণ বেছে নিন।",
+      share_na: "এই ব্রাউজারে শেয়ার চলবে না। “সংরক্ষণ” ব্যবহার করুন।", confirm_del: "এটি মুছে ফেলবেন?",
+      cam_on: "ক্যামেরা ফোন যুক্ত হয়েছে", got_photo: "ছবি জমা হয়েছে", got_video: "ভিডিও জমা হয়েছে", rx: "ভিডিও আসছে… {n}%",
+      no_cam: "ক্যামেরা ফোন সংযুক্ত নেই", slow: "ছবি আসতে দেরি হচ্ছে। সংযোগ দেখুন।", no_rec: "এই ব্রাউজারে ভিডিও রেকর্ড চলবে না", net_lib: "ইন্টারনেট দেখে পেজ রিলোড করুন",
+      c_start_h: "ক্যামেরা চালু করুন", c_start_p: "বোতাম চাপুন, ব্রাউজার চাইলে ক্যামেরা ও মাইক্রোফোনের অনুমতি দিন। প্রথমে সামনের (সেলফি) ক্যামেরা চালু হবে।", c_start_btn: "ক্যামেরার অনুমতি দিন",
+      c_status_wait: "অনুমতির অপেক্ষায়", s_conn: "সংযোগ হচ্ছে", s_linked: "রিমোটের সাথে যুক্ত", s_nf: "রিমোট ফোন পাওয়া যায়নি", s_rec: "রেকর্ডিং চলছে", s_send: "পাঠানো হচ্ছে",
+      c_live_wait: "রিমোট ফোনের সাথে সংযোগ হচ্ছে…", c_live_ok: "সংযুক্ত। এখন রিমোট ফোন থেকে ছবি ও ভিডিও তুলুন।", c_retry: "রিমোট ফোনে পেজ খোলা আছে কি না দেখুন। আবার চেষ্টা হচ্ছে…", c_dropped: "সংযোগ বিচ্ছিন্ন। আবার চেষ্টা হচ্ছে…",
+      c_rec: "ভিডিও রেকর্ড হচ্ছে…", c_send: "ভিডিও রিমোট ফোনে পাঠানো হচ্ছে…", c_note: "এই ফোনে কিছু জমা হয় না। সবকিছু রিমোট ফোনে চলে যায়। এই পেজ খোলা ও স্ক্রিন চালু রাখুন।", c_sent: "পাঠানো হয়েছে: {n}টি",
+      e_unsup: "এখানে ক্যামেরা চলবে না। ঠিকানা https দিয়ে শুরু কি না দেখুন এবং Chrome বা Safari ব্যবহার করুন।",
+      e_denied: "ক্যামেরার অনুমতি দেওয়া হয়নি। ঠিকানার পাশে লক আইকনে ট্যাপ করে ক্যামেরা অনুমতি দিন, তারপর আবার চেষ্টা করুন।",
+      e_nf: "এই ফোনে ক্যামেরা পাওয়া যায়নি।", e_busy: "অন্য অ্যাপ ক্যামেরা ব্যবহার করছে। সেটি বন্ধ করে আবার চেষ্টা করুন।", e_gen: "ক্যামেরা চালু করা যায়নি। আবার চেষ্টা করুন।",
+      e_flip: "ক্যামেরা বদলানো যায়নি", e_shot: "ছবি তোলা যায়নি", e_rec: "রেকর্ড শুরু করা যায়নি"
+    },
+    hi: {
+      app_remote: "रिमोट कैमरा", app_camera: "कैमरा फ़ोन", lang: "भाषा",
+      s_prep: "तैयार हो रहा है…", s_wait: "कैमरा फ़ोन का इंतज़ार", s_ok: "कैमरा जुड़ा है", s_lib: "लाइब्रेरी लोड नहीं हुई", s_srv: "सर्वर कनेक्शन टूटा", s_err: "कनेक्शन में समस्या",
+      link_h: "1. यह लिंक कैमरा फ़ोन पर भेजें",
+      link_p: "यह लिंक WhatsApp या Messenger से बेहतर कैमरे वाले फ़ोन पर भेजें। यह पेज खुला रखें।",
+      link_making: "लिंक बन रहा है…", wa_msg: "यह लिंक खोलें और कैमरे की अनुमति दें:",
+      share: "शेयर करें", copy: "कॉपी करें", copied: "लिंक कॉपी हो गया", copy_hold: "लिंक को दबाकर रखें और कॉपी करें",
+      file_warn: "फ़ाइल को सीधे खोलने पर यह नहीं चलेगा। पहले इसे https वेबसाइट पर अपलोड करें।",
+      stage_msg: "कैमरा फ़ोन पर लिंक खोलें और कैमरे की अनुमति दें। लाइव दृश्य यहाँ दिखेगा।",
+      stage_lost: "कैमरा फ़ोन का कनेक्शन टूट गया। देखें कि वहाँ पेज खुला है या नहीं।",
+      stage_end: "लाइव दृश्य बंद हो गया।",
+      flip: "कैमरा बदलें", timer_off: "टाइमर: बंद", timer_on: "टाइमर: {n} सेकंड",
+      mode_photo: "फ़ोटो", mode_video: "वीडियो",
+      f_none: "असली", f_bw: "ब्लैक एंड व्हाइट", f_sepia: "सेपिया", f_vintage: "विंटेज", f_warm: "गर्म", f_cool: "ठंडा", f_vivid: "चटकीला", f_fade: "फ़ेड", f_drama: "ड्रामा",
+      shutter_photo: "फ़ोटो खींचें", shutter_start: "रिकॉर्डिंग शुरू करें", shutter_stop: "रिकॉर्डिंग रोकें",
+      gal_h: "इस फ़ोन में सहेजे गए", gal_empty: "खींची गई फ़ोटो और वीडियो इस ब्राउज़र में जमा होंगे। गैलरी में लेने के लिए किसी पर टैप करके “सेव” दबाएँ।",
+      count: "{n} आइटम", save: "सेव", del: "हटाएँ", close: "बंद करें",
+      save_hint: "सेव शुरू हो गया। न हो तो फ़ोटो को दबाकर रखें और सेव चुनें।",
+      share_na: "इस ब्राउज़र में शेयर उपलब्ध नहीं है। “सेव” का उपयोग करें।", confirm_del: "इसे हटा दें?",
+      cam_on: "कैमरा फ़ोन जुड़ गया", got_photo: "फ़ोटो जमा हो गई", got_video: "वीडियो जमा हो गया", rx: "वीडियो आ रहा है… {n}%",
+      no_cam: "कैमरा फ़ोन जुड़ा नहीं है", slow: "फ़ोटो आने में देर हो रही है। कनेक्शन देखें।", no_rec: "यह ब्राउज़र वीडियो रिकॉर्ड नहीं कर सकता", net_lib: "इंटरनेट जाँचें और पेज रीलोड करें",
+      c_start_h: "कैमरा चालू करें", c_start_p: "बटन दबाएँ और ब्राउज़र पूछे तो कैमरे और माइक्रोफ़ोन की अनुमति दें। पहले सामने वाला (सेल्फ़ी) कैमरा चालू होगा।", c_start_btn: "कैमरे की अनुमति दें",
+      c_status_wait: "अनुमति का इंतज़ार", s_conn: "जुड़ रहा है", s_linked: "रिमोट से जुड़ा है", s_nf: "रिमोट फ़ोन नहीं मिला", s_rec: "रिकॉर्डिंग जारी", s_send: "भेजा जा रहा है",
+      c_live_wait: "रिमोट फ़ोन से जुड़ रहा है…", c_live_ok: "जुड़ गया। अब रिमोट फ़ोन से फ़ोटो और वीडियो लें।", c_retry: "देखें कि रिमोट फ़ोन पर पेज खुला है। फिर कोशिश हो रही है…", c_dropped: "कनेक्शन टूटा। फिर कोशिश हो रही है…",
+      c_rec: "वीडियो रिकॉर्ड हो रहा है…", c_send: "वीडियो रिमोट फ़ोन पर भेजा जा रहा है…", c_note: "इस फ़ोन में कुछ सहेजा नहीं जाता। सब कुछ रिमोट फ़ोन पर चला जाता है। यह पेज खुला और स्क्रीन चालू रखें।", c_sent: "भेजे गए आइटम: {n}",
+      e_unsup: "यहाँ कैमरा नहीं चलेगा। देखें कि पता https से शुरू होता है और Chrome या Safari इस्तेमाल करें।",
+      e_denied: "कैमरे की अनुमति नहीं दी गई। पते के पास लॉक आइकन पर टैप करके कैमरा अनुमति दें, फिर दोबारा कोशिश करें।",
+      e_nf: "इस फ़ोन में कैमरा नहीं मिला।", e_busy: "कोई दूसरा ऐप कैमरा इस्तेमाल कर रहा है। उसे बंद करके फिर कोशिश करें।", e_gen: "कैमरा चालू नहीं हो सका। फिर कोशिश करें।",
+      e_flip: "कैमरा बदला नहीं जा सका", e_shot: "फ़ोटो नहीं खींची जा सकी", e_rec: "रिकॉर्डिंग शुरू नहीं हो सकी"
+    },
+    ur: {
+      app_remote: "ریموٹ کیمرا", app_camera: "کیمرا فون", lang: "زبان",
+      s_prep: "تیار ہو رہا ہے…", s_wait: "کیمرا فون کا انتظار", s_ok: "کیمرا جڑ گیا", s_lib: "لائبریری لوڈ نہیں ہوئی", s_srv: "سرور کنکشن ٹوٹ گیا", s_err: "کنکشن میں مسئلہ",
+      link_h: "1. یہ لنک کیمرا فون پر بھیجیں",
+      link_p: "یہ لنک WhatsApp یا Messenger کے ذریعے بہتر کیمرے والے فون پر بھیجیں۔ یہ صفحہ کھلا رکھیں۔",
+      link_making: "لنک بن رہا ہے…", wa_msg: "یہ لنک کھولیں اور کیمرے کی اجازت دیں:",
+      share: "شیئر کریں", copy: "کاپی کریں", copied: "لنک کاپی ہو گیا", copy_hold: "لنک کو دبا کر رکھیں اور کاپی کریں",
+      file_warn: "فائل کو براہِ راست کھولنے پر یہ نہیں چلے گی۔ پہلے اسے https ویب سائٹ پر اپ لوڈ کریں۔",
+      stage_msg: "کیمرا فون پر لنک کھولیں اور کیمرے کی اجازت دیں۔ لائیو منظر یہاں نظر آئے گا۔",
+      stage_lost: "کیمرا فون کا کنکشن ٹوٹ گیا۔ دیکھیں کہ وہاں صفحہ کھلا ہے یا نہیں۔",
+      stage_end: "لائیو منظر بند ہو گیا۔",
+      flip: "کیمرا تبدیل کریں", timer_off: "ٹائمر: بند", timer_on: "ٹائمر: {n} سیکنڈ",
+      mode_photo: "تصویر", mode_video: "ویڈیو",
+      f_none: "اصل", f_bw: "سیاہ و سفید", f_sepia: "سیپیا", f_vintage: "وِنٹیج", f_warm: "گرم", f_cool: "ٹھنڈا", f_vivid: "شوخ", f_fade: "فیڈ", f_drama: "ڈرامائی",
+      shutter_photo: "تصویر لیں", shutter_start: "ریکارڈنگ شروع کریں", shutter_stop: "ریکارڈنگ روکیں",
+      gal_h: "اس فون میں محفوظ", gal_empty: "لی گئی تصاویر اور ویڈیوز اس براؤزر میں جمع ہوں گی۔ گیلری میں لانے کے لیے کسی پر ٹیپ کر کے “محفوظ کریں” دبائیں۔",
+      count: "{n} آئٹم", save: "محفوظ کریں", del: "حذف کریں", close: "بند کریں",
+      save_hint: "محفوظ کرنا شروع ہو گیا۔ نہ ہو تو تصویر کو دبا کر رکھیں اور محفوظ کریں چنیں۔",
+      share_na: "اس براؤزر میں شیئر دستیاب نہیں۔ “محفوظ کریں” استعمال کریں۔", confirm_del: "کیا اسے حذف کر دیں؟",
+      cam_on: "کیمرا فون جڑ گیا", got_photo: "تصویر جمع ہو گئی", got_video: "ویڈیو جمع ہو گئی", rx: "ویڈیو آ رہی ہے… {n}%",
+      no_cam: "کیمرا فون جڑا ہوا نہیں", slow: "تصویر آنے میں دیر ہو رہی ہے۔ کنکشن چیک کریں۔", no_rec: "یہ براؤزر ویڈیو ریکارڈ نہیں کر سکتا", net_lib: "انٹرنیٹ چیک کریں اور صفحہ ری لوڈ کریں",
+      c_start_h: "کیمرا چالو کریں", c_start_p: "بٹن دبائیں اور براؤزر پوچھے تو کیمرے اور مائیکروفون کی اجازت دیں۔ پہلے سامنے والا (سیلفی) کیمرا چالو ہوگا۔", c_start_btn: "کیمرے کی اجازت دیں",
+      c_status_wait: "اجازت کا انتظار", s_conn: "جڑ رہا ہے", s_linked: "ریموٹ سے جڑا ہوا", s_nf: "ریموٹ فون نہیں ملا", s_rec: "ریکارڈنگ جاری", s_send: "بھیجا جا رہا ہے",
+      c_live_wait: "ریموٹ فون سے جڑ رہا ہے…", c_live_ok: "جڑ گیا۔ اب ریموٹ فون سے تصاویر اور ویڈیوز لیں۔", c_retry: "دیکھیں کہ ریموٹ فون پر صفحہ کھلا ہے۔ دوبارہ کوشش ہو رہی ہے…", c_dropped: "کنکشن ٹوٹ گیا۔ دوبارہ کوشش ہو رہی ہے…",
+      c_rec: "ویڈیو ریکارڈ ہو رہی ہے…", c_send: "ویڈیو ریموٹ فون پر بھیجی جا رہی ہے…", c_note: "اس فون میں کچھ محفوظ نہیں ہوتا۔ سب کچھ ریموٹ فون پر چلا جاتا ہے۔ یہ صفحہ کھلا اور اسکرین چالو رکھیں۔", c_sent: "بھیجے گئے آئٹم: {n}",
+      e_unsup: "یہاں کیمرا نہیں چلے گا۔ دیکھیں کہ ایڈریس https سے شروع ہوتا ہے اور Chrome یا Safari استعمال کریں۔",
+      e_denied: "کیمرے کی اجازت نہیں دی گئی۔ ایڈریس کے ساتھ لاک آئیکن پر ٹیپ کر کے کیمرے کی اجازت دیں، پھر دوبارہ کوشش کریں۔",
+      e_nf: "اس فون میں کیمرا نہیں ملا۔", e_busy: "کوئی دوسری ایپ کیمرا استعمال کر رہی ہے۔ اسے بند کر کے دوبارہ کوشش کریں۔", e_gen: "کیمرا چالو نہیں ہو سکا۔ دوبارہ کوشش کریں۔",
+      e_flip: "کیمرا تبدیل نہیں ہو سکا", e_shot: "تصویر نہیں لی جا سکی", e_rec: "ریکارڈنگ شروع نہیں ہو سکی"
+    },
+    ar: {
+      app_remote: "كاميرا عن بُعد", app_camera: "هاتف الكاميرا", lang: "اللغة",
+      s_prep: "جارٍ التجهيز…", s_wait: "بانتظار هاتف الكاميرا", s_ok: "الكاميرا متصلة", s_lib: "تعذّر تحميل المكتبة", s_srv: "انقطع الاتصال بالخادم", s_err: "مشكلة في الاتصال",
+      link_h: "1. أرسل هذا الرابط إلى هاتف الكاميرا",
+      link_p: "أرسل هذا الرابط عبر WhatsApp أو Messenger إلى الهاتف ذي الكاميرا الأفضل. أبقِ هذه الصفحة مفتوحة.",
+      link_making: "جارٍ إنشاء الرابط…", wa_msg: "افتح هذا الرابط واسمح بالوصول إلى الكاميرا:",
+      share: "مشاركة", copy: "نسخ", copied: "تم نسخ الرابط", copy_hold: "اضغط مطولاً على الرابط لنسخه",
+      file_warn: "لن يعمل هذا عند فتح الملف مباشرةً. ارفعه أولاً إلى موقع https.",
+      stage_msg: "افتح الرابط على هاتف الكاميرا واسمح بالوصول إلى الكاميرا. سيظهر البث المباشر هنا.",
+      stage_lost: "انقطع اتصال هاتف الكاميرا. تأكد أن الصفحة ما زالت مفتوحة هناك.",
+      stage_end: "توقف البث المباشر.",
+      flip: "تبديل الكاميرا", timer_off: "المؤقت: متوقف", timer_on: "المؤقت: {n} ث",
+      mode_photo: "صورة", mode_video: "فيديو",
+      f_none: "الأصلي", f_bw: "أبيض وأسود", f_sepia: "سيبيا", f_vintage: "كلاسيكي", f_warm: "دافئ", f_cool: "بارد", f_vivid: "زاهٍ", f_fade: "باهت", f_drama: "درامي",
+      shutter_photo: "التقاط صورة", shutter_start: "بدء التسجيل", shutter_stop: "إيقاف التسجيل",
+      gal_h: "المحفوظ على هذا الهاتف", gal_empty: "تُحفظ الصور ومقاطع الفيديو هنا داخل هذا المتصفح. اضغط على عنصر ثم «حفظ» لنقله إلى المعرض.",
+      count: "{n} عنصر", save: "حفظ", del: "حذف", close: "إغلاق",
+      save_hint: "بدأ الحفظ. إن لم يحدث شيء، اضغط مطولاً على الصورة واختر حفظ.",
+      share_na: "المشاركة غير متاحة في هذا المتصفح. استخدم «حفظ».", confirm_del: "هل تريد حذف هذا العنصر؟",
+      cam_on: "تم اتصال هاتف الكاميرا", got_photo: "تم حفظ الصورة", got_video: "تم حفظ الفيديو", rx: "جارٍ استلام الفيديو… {n}%",
+      no_cam: "هاتف الكاميرا غير متصل", slow: "الصورة تستغرق وقتاً طويلاً. تحقق من الاتصال.", no_rec: "هذا المتصفح لا يدعم تسجيل الفيديو", net_lib: "تحقق من الإنترنت وأعد تحميل الصفحة",
+      c_start_h: "تشغيل الكاميرا", c_start_p: "اضغط الزر واسمح بالوصول إلى الكاميرا والميكروفون عندما يطلب المتصفح. تبدأ الكاميرا الأمامية (السيلفي) أولاً.", c_start_btn: "السماح بالكاميرا",
+      c_status_wait: "بانتظار الإذن", s_conn: "جارٍ الاتصال", s_linked: "متصل بالهاتف البعيد", s_nf: "لم يُعثر على الهاتف البعيد", s_rec: "جارٍ التسجيل", s_send: "جارٍ الإرسال",
+      c_live_wait: "جارٍ الاتصال بالهاتف البعيد…", c_live_ok: "تم الاتصال. التقط الصور والفيديوهات من الهاتف البعيد.", c_retry: "تأكد أن الصفحة مفتوحة على الهاتف البعيد. جارٍ إعادة المحاولة…", c_dropped: "انقطع الاتصال. جارٍ إعادة المحاولة…",
+      c_rec: "جارٍ تسجيل الفيديو…", c_send: "جارٍ إرسال الفيديو إلى الهاتف البعيد…", c_note: "لا يُحفظ شيء على هذا الهاتف. كل شيء يُرسل إلى الهاتف البعيد. أبقِ الصفحة مفتوحة والشاشة مضاءة.", c_sent: "العناصر المرسلة: {n}",
+      e_unsup: "الكاميرا غير متاحة هنا. تأكد أن العنوان يبدأ بـ https واستخدم Chrome أو Safari.",
+      e_denied: "لم يتم السماح بالكاميرا. اضغط على أيقونة القفل بجوار العنوان واسمح بالكاميرا ثم حاول مجدداً.",
+      e_nf: "لم يتم العثور على كاميرا في هذا الهاتف.", e_busy: "تطبيق آخر يستخدم الكاميرا. أغلقه وحاول مجدداً.", e_gen: "تعذّر تشغيل الكاميرا. حاول مجدداً.",
+      e_flip: "تعذّر تبديل الكاميرا", e_shot: "تعذّر التقاط الصورة", e_rec: "تعذّر بدء التسجيل"
+    },
+    es: {
+      app_remote: "Cámara remota", app_camera: "Teléfono cámara", lang: "Idioma",
+      s_prep: "Preparando…", s_wait: "Esperando al teléfono cámara", s_ok: "Cámara conectada", s_lib: "No se cargó la biblioteca", s_srv: "Conexión con el servidor perdida", s_err: "Problema de conexión",
+      link_h: "1. Envía este enlace al teléfono cámara",
+      link_p: "Envía este enlace por WhatsApp o Messenger al teléfono con mejor cámara. Mantén esta página abierta.",
+      link_making: "Creando enlace…", wa_msg: "Abre este enlace y permite el acceso a la cámara:",
+      share: "Compartir", copy: "Copiar", copied: "Enlace copiado", copy_hold: "Mantén pulsado el enlace para copiarlo",
+      file_warn: "No funcionará si abres el archivo directamente. Súbelo primero a un sitio https.",
+      stage_msg: "Abre el enlace en el teléfono cámara y permite el acceso a la cámara. La vista en vivo aparecerá aquí.",
+      stage_lost: "El teléfono cámara se desconectó. Comprueba que la página siga abierta allí.",
+      stage_end: "La vista en vivo se detuvo.",
+      flip: "Cambiar cámara", timer_off: "Temporizador: no", timer_on: "Temporizador: {n} s",
+      mode_photo: "Foto", mode_video: "Vídeo",
+      f_none: "Original", f_bw: "Blanco y negro", f_sepia: "Sepia", f_vintage: "Vintage", f_warm: "Cálido", f_cool: "Frío", f_vivid: "Intenso", f_fade: "Desvaído", f_drama: "Dramático",
+      shutter_photo: "Hacer foto", shutter_start: "Empezar a grabar", shutter_stop: "Detener grabación",
+      gal_h: "Guardado en este teléfono", gal_empty: "Las fotos y vídeos se guardan aquí, dentro de este navegador. Toca uno y pulsa Guardar para llevarlo a tu galería.",
+      count: "{n} elementos", save: "Guardar", del: "Eliminar", close: "Cerrar",
+      save_hint: "Se inició el guardado. Si no pasa nada, mantén pulsada la foto y elige Guardar.",
+      share_na: "Compartir no está disponible en este navegador. Usa Guardar.", confirm_del: "¿Eliminar este elemento?",
+      cam_on: "Teléfono cámara conectado", got_photo: "Foto guardada", got_video: "Vídeo guardado", rx: "Recibiendo vídeo… {n}%",
+      no_cam: "El teléfono cámara no está conectado", slow: "La foto tarda demasiado. Revisa la conexión.", no_rec: "Este navegador no puede grabar vídeo", net_lib: "Revisa tu internet y recarga la página",
+      c_start_h: "Activar la cámara", c_start_p: "Pulsa el botón y permite el acceso a la cámara y al micrófono cuando el navegador lo pida. Primero se activa la cámara frontal (selfie).", c_start_btn: "Permitir cámara",
+      c_status_wait: "Esperando permiso", s_conn: "Conectando", s_linked: "Conectado al remoto", s_nf: "Teléfono remoto no encontrado", s_rec: "Grabando", s_send: "Enviando",
+      c_live_wait: "Conectando con el teléfono remoto…", c_live_ok: "Conectado. Haz fotos y vídeos desde el teléfono remoto.", c_retry: "Comprueba que la página esté abierta en el teléfono remoto. Reintentando…", c_dropped: "Desconectado. Reintentando…",
+      c_rec: "Grabando vídeo…", c_send: "Enviando vídeo al teléfono remoto…", c_note: "No se guarda nada en este teléfono. Todo se envía al teléfono remoto. Mantén esta página abierta y la pantalla encendida.", c_sent: "Elementos enviados: {n}",
+      e_unsup: "La cámara no está disponible aquí. Comprueba que la dirección empiece por https y usa Chrome o Safari.",
+      e_denied: "No se permitió el acceso a la cámara. Toca el icono del candado junto a la dirección, permite la cámara y vuelve a intentarlo.",
+      e_nf: "No se encontró ninguna cámara en este teléfono.", e_busy: "Otra aplicación está usando la cámara. Ciérrala e inténtalo de nuevo.", e_gen: "No se pudo activar la cámara. Inténtalo de nuevo.",
+      e_flip: "No se pudo cambiar de cámara", e_shot: "No se pudo hacer la foto", e_rec: "No se pudo iniciar la grabación"
+    },
+    fr: {
+      app_remote: "Caméra à distance", app_camera: "Téléphone caméra", lang: "Langue",
+      s_prep: "Préparation…", s_wait: "En attente du téléphone caméra", s_ok: "Caméra connectée", s_lib: "Échec du chargement de la bibliothèque", s_srv: "Connexion au serveur perdue", s_err: "Problème de connexion",
+      link_h: "1. Envoyez ce lien au téléphone caméra",
+      link_p: "Envoyez ce lien par WhatsApp ou Messenger au téléphone qui a la meilleure caméra. Gardez cette page ouverte.",
+      link_making: "Création du lien…", wa_msg: "Ouvrez ce lien et autorisez l'accès à la caméra :",
+      share: "Partager", copy: "Copier", copied: "Lien copié", copy_hold: "Appuyez longuement sur le lien pour le copier",
+      file_warn: "Cela ne fonctionnera pas si le fichier est ouvert directement. Mettez-le d'abord en ligne sur un site https.",
+      stage_msg: "Ouvrez le lien sur le téléphone caméra et autorisez l'accès à la caméra. L'aperçu en direct apparaîtra ici.",
+      stage_lost: "Le téléphone caméra s'est déconnecté. Vérifiez que la page y est toujours ouverte.",
+      stage_end: "L'aperçu en direct s'est arrêté.",
+      flip: "Changer de caméra", timer_off: "Minuteur : non", timer_on: "Minuteur : {n} s",
+      mode_photo: "Photo", mode_video: "Vidéo",
+      f_none: "Original", f_bw: "Noir et blanc", f_sepia: "Sépia", f_vintage: "Vintage", f_warm: "Chaud", f_cool: "Froid", f_vivid: "Éclatant", f_fade: "Délavé", f_drama: "Dramatique",
+      shutter_photo: "Prendre une photo", shutter_start: "Démarrer l'enregistrement", shutter_stop: "Arrêter l'enregistrement",
+      gal_h: "Enregistré sur ce téléphone", gal_empty: "Les photos et vidéos sont conservées ici, dans ce navigateur. Touchez-en une puis Enregistrer pour la mettre dans votre galerie.",
+      count: "{n} éléments", save: "Enregistrer", del: "Supprimer", close: "Fermer",
+      save_hint: "L'enregistrement a démarré. Sinon, appuyez longuement sur la photo et choisissez Enregistrer.",
+      share_na: "Le partage n'est pas disponible dans ce navigateur. Utilisez Enregistrer.", confirm_del: "Supprimer cet élément ?",
+      cam_on: "Téléphone caméra connecté", got_photo: "Photo enregistrée", got_video: "Vidéo enregistrée", rx: "Réception de la vidéo… {n} %",
+      no_cam: "Le téléphone caméra n'est pas connecté", slow: "La photo met trop de temps. Vérifiez la connexion.", no_rec: "Ce navigateur ne peut pas enregistrer de vidéo", net_lib: "Vérifiez votre connexion et rechargez la page",
+      c_start_h: "Activer la caméra", c_start_p: "Appuyez sur le bouton et autorisez l'accès à la caméra et au micro quand le navigateur le demande. La caméra avant (selfie) démarre en premier.", c_start_btn: "Autoriser la caméra",
+      c_status_wait: "En attente d'autorisation", s_conn: "Connexion", s_linked: "Connecté à la télécommande", s_nf: "Téléphone distant introuvable", s_rec: "Enregistrement", s_send: "Envoi",
+      c_live_wait: "Connexion au téléphone distant…", c_live_ok: "Connecté. Prenez photos et vidéos depuis le téléphone distant.", c_retry: "Vérifiez que la page est ouverte sur le téléphone distant. Nouvelle tentative…", c_dropped: "Déconnecté. Nouvelle tentative…",
+      c_rec: "Enregistrement de la vidéo…", c_send: "Envoi de la vidéo au téléphone distant…", c_note: "Rien n'est enregistré sur ce téléphone. Tout est envoyé au téléphone distant. Gardez cette page ouverte et l'écran allumé.", c_sent: "Éléments envoyés : {n}",
+      e_unsup: "La caméra n'est pas disponible ici. Vérifiez que l'adresse commence par https et utilisez Chrome ou Safari.",
+      e_denied: "L'accès à la caméra n'a pas été autorisé. Touchez le cadenas à côté de l'adresse, autorisez la caméra puis réessayez.",
+      e_nf: "Aucune caméra trouvée sur ce téléphone.", e_busy: "Une autre application utilise la caméra. Fermez-la et réessayez.", e_gen: "Impossible de démarrer la caméra. Réessayez.",
+      e_flip: "Impossible de changer de caméra", e_shot: "Impossible de prendre la photo", e_rec: "Impossible de démarrer l'enregistrement"
+    },
+    id: {
+      app_remote: "Kamera Jarak Jauh", app_camera: "Ponsel Kamera", lang: "Bahasa",
+      s_prep: "Menyiapkan…", s_wait: "Menunggu ponsel kamera", s_ok: "Kamera terhubung", s_lib: "Pustaka gagal dimuat", s_srv: "Koneksi server terputus", s_err: "Masalah koneksi",
+      link_h: "1. Kirim tautan ini ke ponsel kamera",
+      link_p: "Kirim tautan ini lewat WhatsApp atau Messenger ke ponsel dengan kamera lebih bagus. Biarkan halaman ini tetap terbuka.",
+      link_making: "Membuat tautan…", wa_msg: "Buka tautan ini dan izinkan akses kamera:",
+      share: "Bagikan", copy: "Salin", copied: "Tautan disalin", copy_hold: "Tekan lama tautan untuk menyalin",
+      file_warn: "Ini tidak akan berfungsi jika file dibuka langsung. Unggah dulu ke situs https.",
+      stage_msg: "Buka tautan di ponsel kamera dan izinkan akses kamera. Tampilan langsung akan muncul di sini.",
+      stage_lost: "Ponsel kamera terputus. Pastikan halaman masih terbuka di sana.",
+      stage_end: "Tampilan langsung berhenti.",
+      flip: "Ganti kamera", timer_off: "Timer: mati", timer_on: "Timer: {n} dtk",
+      mode_photo: "Foto", mode_video: "Video",
+      f_none: "Asli", f_bw: "Hitam putih", f_sepia: "Sepia", f_vintage: "Vintage", f_warm: "Hangat", f_cool: "Dingin", f_vivid: "Cerah", f_fade: "Pudar", f_drama: "Dramatis",
+      shutter_photo: "Ambil foto", shutter_start: "Mulai merekam", shutter_stop: "Berhenti merekam",
+      gal_h: "Tersimpan di ponsel ini", gal_empty: "Foto dan video disimpan di sini, di dalam browser ini. Ketuk salah satu lalu tekan Simpan untuk memindahkannya ke galeri.",
+      count: "{n} item", save: "Simpan", del: "Hapus", close: "Tutup",
+      save_hint: "Penyimpanan dimulai. Jika tidak terjadi apa-apa, tekan lama fotonya dan pilih Simpan.",
+      share_na: "Berbagi tidak tersedia di browser ini. Gunakan Simpan.", confirm_del: "Hapus item ini?",
+      cam_on: "Ponsel kamera terhubung", got_photo: "Foto tersimpan", got_video: "Video tersimpan", rx: "Menerima video… {n}%",
+      no_cam: "Ponsel kamera tidak terhubung", slow: "Foto terlalu lama masuk. Periksa koneksi.", no_rec: "Browser ini tidak bisa merekam video", net_lib: "Periksa internet lalu muat ulang halaman",
+      c_start_h: "Nyalakan kamera", c_start_p: "Tekan tombol lalu izinkan akses kamera dan mikrofon saat browser bertanya. Kamera depan (selfie) menyala lebih dulu.", c_start_btn: "Izinkan kamera",
+      c_status_wait: "Menunggu izin", s_conn: "Menghubungkan", s_linked: "Terhubung ke remote", s_nf: "Ponsel remote tidak ditemukan", s_rec: "Merekam", s_send: "Mengirim",
+      c_live_wait: "Menghubungkan ke ponsel remote…", c_live_ok: "Terhubung. Ambil foto dan video dari ponsel remote.", c_retry: "Pastikan halaman terbuka di ponsel remote. Mencoba lagi…", c_dropped: "Terputus. Mencoba lagi…",
+      c_rec: "Merekam video…", c_send: "Mengirim video ke ponsel remote…", c_note: "Tidak ada yang disimpan di ponsel ini. Semuanya dikirim ke ponsel remote. Biarkan halaman terbuka dan layar menyala.", c_sent: "Item terkirim: {n}",
+      e_unsup: "Kamera tidak tersedia di sini. Pastikan alamat diawali https dan gunakan Chrome atau Safari.",
+      e_denied: "Akses kamera tidak diizinkan. Ketuk ikon gembok di samping alamat, izinkan kamera, lalu coba lagi.",
+      e_nf: "Kamera tidak ditemukan di ponsel ini.", e_busy: "Aplikasi lain sedang memakai kamera. Tutup lalu coba lagi.", e_gen: "Kamera tidak bisa dinyalakan. Coba lagi.",
+      e_flip: "Tidak bisa mengganti kamera", e_shot: "Tidak bisa mengambil foto", e_rec: "Tidak bisa memulai rekaman"
+    }
+  };
+
+  /* ---------------- helpers ---------------- */
+  var $ = function (id) { return document.getElementById(id); };
+  var params = new URLSearchParams(location.search);
+  var joinId = params.get("join");
+  var lang = "en";
+  var langHooks = [];
+
+  function langInfo(c) { for (var i = 0; i < LANGS.length; i++) if (LANGS[i].c === c) return LANGS[i]; return null; }
+  function nf(n) { try { return new Intl.NumberFormat(langInfo(lang).l).format(n); } catch (e) { return String(n); } }
+  function t(k, v) {
+    var s = (I18N[lang] && I18N[lang][k]) || I18N.en[k] || k;
+    if (v) for (var x in v) s = s.replace("{" + x + "}", typeof v[x] === "number" ? nf(v[x]) : v[x]);
+    return s;
+  }
+  function setT(el, key, vars) {
+    el.dataset.k = key;
+    if (vars) el.dataset.v = JSON.stringify(vars); else delete el.dataset.v;
+    el.textContent = t(key, vars);
+  }
+  function clearT(el) { delete el.dataset.k; delete el.dataset.v; el.textContent = ""; }
+  function setKA(el, key) { el.dataset.ka = key; el.setAttribute("aria-label", t(key)); }
+  function applyLang() {
+    var info = langInfo(lang);
+    document.documentElement.lang = lang;
+    document.documentElement.dir = info.rtl ? "rtl" : "ltr";
+    Array.prototype.forEach.call(document.querySelectorAll("[data-k]"), function (el) {
+      var v = null; try { v = el.dataset.v ? JSON.parse(el.dataset.v) : null; } catch (e) {}
+      el.textContent = t(el.dataset.k, v);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-ka]"), function (el) { el.setAttribute("aria-label", t(el.dataset.ka)); });
+    document.title = t(joinId ? "app_camera" : "app_remote");
+    langHooks.forEach(function (f) { f(); });
+  }
+  function pickLang(c) { return c && langInfo(c) ? c : null; }
+  function initLang() {
+    var stored = null; try { stored = localStorage.getItem("rc_lang"); } catch (e) {}
+    lang = (joinId ? pickLang(params.get("lang")) : null) || pickLang(stored) || "en";
+    var sel = $("langSel");
+    LANGS.forEach(function (L) { var o = document.createElement("option"); o.value = L.c; o.textContent = L.n; sel.appendChild(o); });
+    sel.value = lang;
+    sel.addEventListener("change", function () {
+      lang = sel.value;
+      try { localStorage.setItem("rc_lang", lang); } catch (e) {}
+      applyLang();
+    });
+  }
+
+  function toast(text, ms) {
+    var el = $("toast"); el.textContent = text; el.hidden = false;
+    clearTimeout(toast._t); toast._t = setTimeout(function () { el.hidden = true; }, ms || 2400);
+  }
+  function setPill(prefix, state, key) {
+    $(prefix + "Status").setAttribute("data-s", state); setT($(prefix + "StatusText"), key);
+  }
+  function randId() {
+    var a = "abcdefghjkmnpqrstuvwxyz23456789", s = "cr";
+    for (var i = 0; i < 8; i++) s += a[Math.floor(Math.random() * a.length)];
+    return s;
+  }
+  function flash(el) {
+    el.classList.add("on");
+    requestAnimationFrame(function () { requestAnimationFrame(function () { el.classList.remove("on"); }); });
+  }
+  function hasPeer() { return typeof window.Peer === "function"; }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  /* ---------------- filters ----------------
+     One definition drives both the live preview (CSS filter) and the saved photo (pixel math). */
+  var FILTERS = [
+    { id: "none", ops: [] },
+    { id: "bw", ops: [["grayscale", 1], ["contrast", 1.1]] },
+    { id: "sepia", ops: [["sepia", 0.9]] },
+    { id: "vintage", ops: [["sepia", 0.45], ["contrast", 0.92], ["brightness", 1.08], ["saturate", 1.25]] },
+    { id: "warm", ops: [["sepia", 0.25], ["saturate", 1.3], ["brightness", 1.04]] },
+    { id: "cool", ops: [["hue-rotate", -18], ["saturate", 1.1], ["brightness", 1.03]] },
+    { id: "vivid", ops: [["saturate", 1.6], ["contrast", 1.12]] },
+    { id: "fade", ops: [["contrast", 0.85], ["brightness", 1.12], ["saturate", 0.8]] },
+    { id: "drama", ops: [["contrast", 1.35], ["saturate", 0.85], ["brightness", 0.95]] }
+  ];
+  function filterById(id) { for (var i = 0; i < FILTERS.length; i++) if (FILTERS[i].id === id) return FILTERS[i]; return FILTERS[0]; }
+  function cssFilter(ops) {
+    if (!ops.length) return "none";
+    return ops.map(function (o) { return o[0] + "(" + o[1] + (o[0] === "hue-rotate" ? "deg" : "") + ")"; }).join(" ");
+  }
+  function mul3(A, B) {
+    var C = [];
+    for (var i = 0; i < 3; i++) for (var j = 0; j < 3; j++) C[i * 3 + j] = A[i * 3] * B[j] + A[i * 3 + 1] * B[3 + j] + A[i * 3 + 2] * B[6 + j];
+    return C;
+  }
+  function opMatrix(n, v) {
+    var a, s, c, r;
+    if (n === "brightness") return { A: [v, 0, 0, 0, v, 0, 0, 0, v], b: [0, 0, 0] };
+    if (n === "contrast") { var k = 128 * (1 - v); return { A: [v, 0, 0, 0, v, 0, 0, 0, v], b: [k, k, k] }; }
+    if (n === "grayscale") {
+      a = 1 - Math.min(1, v);
+      return { A: [0.2126 + 0.7874 * a, 0.7152 - 0.7152 * a, 0.0722 - 0.0722 * a,
+                   0.2126 - 0.2126 * a, 0.7152 + 0.2848 * a, 0.0722 - 0.0722 * a,
+                   0.2126 - 0.2126 * a, 0.7152 - 0.7152 * a, 0.0722 + 0.9278 * a], b: [0, 0, 0] };
+    }
+    if (n === "sepia") {
+      a = 1 - Math.min(1, v);
+      return { A: [0.393 + 0.607 * a, 0.769 - 0.769 * a, 0.189 - 0.189 * a,
+                   0.349 - 0.349 * a, 0.686 + 0.314 * a, 0.168 - 0.168 * a,
+                   0.272 - 0.272 * a, 0.534 - 0.534 * a, 0.131 + 0.869 * a], b: [0, 0, 0] };
+    }
+    if (n === "saturate") {
+      s = v;
+      return { A: [0.213 + 0.787 * s, 0.715 - 0.715 * s, 0.072 - 0.072 * s,
+                   0.213 - 0.213 * s, 0.715 + 0.285 * s, 0.072 - 0.072 * s,
+                   0.213 - 0.213 * s, 0.715 - 0.715 * s, 0.072 + 0.928 * s], b: [0, 0, 0] };
+    }
+    if (n === "hue-rotate") {
+      r = v * Math.PI / 180; c = Math.cos(r); s = Math.sin(r);
+      return { A: [0.213 + c * 0.787 - s * 0.213, 0.715 - c * 0.715 - s * 0.715, 0.072 - c * 0.072 + s * 0.928,
+                   0.213 - c * 0.213 + s * 0.143, 0.715 + c * 0.285 + s * 0.140, 0.072 - c * 0.072 - s * 0.283,
+                   0.213 - c * 0.213 - s * 0.787, 0.715 - c * 0.715 + s * 0.715, 0.072 + c * 0.928 + s * 0.072], b: [0, 0, 0] };
+    }
+    return { A: [1, 0, 0, 0, 1, 0, 0, 0, 1], b: [0, 0, 0] };
+  }
+  function compileOps(ops) {
+    var M = [1, 0, 0, 0, 1, 0, 0, 0, 1], o = [0, 0, 0];
+    ops.forEach(function (op) {
+      var m = opMatrix(op[0], op[1]), A = m.A;
+      M = mul3(A, M);
+      o = [A[0] * o[0] + A[1] * o[1] + A[2] * o[2] + m.b[0], A[3] * o[0] + A[4] * o[1] + A[5] * o[2] + m.b[1], A[6] * o[0] + A[7] * o[1] + A[8] * o[2] + m.b[2]];
+    });
+    return { M: M, o: o };
+  }
+  function applyOps(data, ops) {
+    var c = compileOps(ops), M = c.M, o = c.o, i, r, g, b;
+    for (i = 0; i < data.length; i += 4) {
+      r = data[i]; g = data[i + 1]; b = data[i + 2];
+      data[i] = M[0] * r + M[1] * g + M[2] * b + o[0];
+      data[i + 1] = M[3] * r + M[4] * g + M[5] * b + o[1];
+      data[i + 2] = M[6] * r + M[7] * g + M[8] * b + o[2];
+    }
+  }
+  async function bakeFilter(blob, fid) {
+    var f = filterById(fid);
+    if (!f.ops.length) return blob;
+    try {
+      var src, w, h;
+      if (window.createImageBitmap) { src = await createImageBitmap(blob); w = src.width; h = src.height; }
+      else {
+        src = await new Promise(function (res, rej) { var im = new Image(), u = URL.createObjectURL(blob); im.onload = function () { URL.revokeObjectURL(u); res(im); }; im.onerror = rej; im.src = u; });
+        w = src.naturalWidth; h = src.naturalHeight;
+      }
+      var sc = Math.min(1, 4096 / Math.max(w, h));
+      var cv = document.createElement("canvas"); cv.width = Math.round(w * sc); cv.height = Math.round(h * sc);
+      var cx = cv.getContext("2d"); cx.drawImage(src, 0, 0, cv.width, cv.height);
+      var img = cx.getImageData(0, 0, cv.width, cv.height);
+      applyOps(img.data, f.ops); cx.putImageData(img, 0, 0);
+      var out = await new Promise(function (r) { cv.toBlob(r, "image/jpeg", 0.92); });
+      return out || blob;
+    } catch (e) { return blob; }
+  }
+
+  /* =====================================================================
+     Remote phone: collects photos and videos, controls the camera phone
+     ===================================================================== */
+  function initRemote() {
+    $("remoteView").hidden = false;
+    if (location.protocol === "file:") $("fileWarn").hidden = false;
+
+    // ---------- storage (IndexedDB) ----------
+    var db = null, items = [];
+    function openDb() {
+      return new Promise(function (res) {
+        try {
+          var rq = indexedDB.open("remote-camera", 1);
+          rq.onupgradeneeded = function () { rq.result.createObjectStore("photos", { keyPath: "id" }); };
+          rq.onsuccess = function () { db = rq.result; res(); };
+          rq.onerror = function () { res(); };
+        } catch (e) { res(); }
+      });
+    }
+    function dbAll() {
+      return new Promise(function (res) {
+        if (!db) return res([]);
+        var r = db.transaction("photos").objectStore("photos").getAll();
+        r.onsuccess = function () { res(r.result || []); };
+        r.onerror = function () { res([]); };
+      });
+    }
+    function dbPut(p) { if (db) try { db.transaction("photos", "readwrite").objectStore("photos").put(p); } catch (e) {} }
+    function dbDel(id) { if (db) try { db.transaction("photos", "readwrite").objectStore("photos").delete(id); } catch (e) {} }
+
+    function renderGrid() {
+      var g = $("grid"); g.textContent = "";
+      items.sort(function (a, b) { return b.ts - a.ts; });
+      items.forEach(function (p) {
+        if (!p.url) p.url = URL.createObjectURL(p.blob);
+        var b = document.createElement("button"); b.type = "button"; b.className = "thumb";
+        if (p.kind === "video") {
+          var v = document.createElement("video"); v.muted = true; v.playsInline = true; v.preload = "metadata"; v.src = p.url + "#t=0.1";
+          b.appendChild(v); var pl = document.createElement("span"); pl.className = "play"; b.appendChild(pl);
+        } else {
+          var im = document.createElement("img"); im.src = p.url; im.alt = ""; im.loading = "lazy"; b.appendChild(im);
+        }
+        b.addEventListener("click", function () { openViewer(p); });
+        g.appendChild(b);
+      });
+      if (items.length) setT($("photoCount"), "count", { n: items.length }); else clearT($("photoCount"));
+      $("emptyGal").hidden = items.length > 0;
+    }
+
+    // ---------- viewer ----------
+    var current = null;
+    function fileName(p) {
+      var d = new Date(p.ts), z = function (n) { return String(n).padStart(2, "0"); };
+      var ext = p.kind === "video" ? (/mp4/.test(p.blob.type) ? "mp4" : "webm") : (/png/.test(p.blob.type) ? "png" : "jpg");
+      return (p.kind === "video" ? "video-" : "photo-") + d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + "-" + z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds()) + "." + ext;
+    }
+    function openViewer(p) {
+      current = p;
+      var vid = $("viewVid"), img = $("viewImg");
+      if (p.kind === "video") { img.hidden = true; img.removeAttribute("src"); vid.hidden = false; vid.src = p.url; }
+      else { vid.hidden = true; vid.removeAttribute("src"); img.hidden = false; img.src = p.url; }
+      $("viewer").hidden = false;
+    }
+    function closeViewer() {
+      var vid = $("viewVid"); try { vid.pause(); } catch (e) {} vid.removeAttribute("src"); try { vid.load(); } catch (e) {}
+      $("viewer").hidden = true; current = null;
+    }
+    $("vClose").addEventListener("click", closeViewer);
+    $("viewer").addEventListener("click", function (e) { if (e.target === $("viewer")) closeViewer(); });
+    $("vSave").addEventListener("click", function () {
+      if (!current) return;
+      var a = document.createElement("a"); a.href = current.url; a.download = fileName(current);
+      document.body.appendChild(a); a.click(); a.remove();
+      toast(t("save_hint"), 3600);
+    });
+    $("vShare").addEventListener("click", function () {
+      if (!current) return;
+      var f = new File([current.blob], fileName(current), { type: current.blob.type });
+      if (navigator.canShare && navigator.canShare({ files: [f] })) navigator.share({ files: [f] }).catch(function () {});
+      else toast(t("share_na"));
+    });
+    $("vDel").addEventListener("click", function () {
+      if (!current) return;
+      if (!window.confirm(t("confirm_del"))) return;
+      var id = current.id, u = current.url;
+      closeViewer(); dbDel(id); if (u) URL.revokeObjectURL(u);
+      items = items.filter(function (x) { return x.id !== id; }); renderGrid();
+    });
+
+    // ---------- state ----------
+    var peer = null, conn = null, myId = null, lastId = null;
+    var mode = "photo", recording = false, recPending = false, recTimer = null, recT0 = 0, recIv = null;
+    var pending = false, pendingTimer = null, timerSecs = 0, counting = false, filterId = "none", camCanRec = true;
+    var shotFilter = {}, rx = {};
+    try { myId = localStorage.getItem("rc_id"); } catch (e) {}
+    if (!myId) myId = randId();
+
+    function connected() { return !!(conn && conn.open); }
+
+    function updateUI() {
+      var c = connected();
+      var shot = $("shotBtn");
+      shot.disabled = !c || pending || recPending;
+      shot.className = "shutter" + (mode === "video" ? " vid" : "") + (recording ? " on" : "");
+      setKA(shot, recording ? "shutter_stop" : (mode === "video" ? "shutter_start" : "shutter_photo"));
+      $("flipBtn").disabled = !c || recording;
+      $("modePhoto").disabled = recording; $("modeVideo").disabled = recording;
+      $("modePhoto").setAttribute("aria-pressed", mode === "photo");
+      $("modeVideo").setAttribute("aria-pressed", mode === "video");
+      setT($("timerBtn"), timerSecs ? "timer_on" : "timer_off", timerSecs ? { n: timerSecs } : null);
+    }
+    function setStageMsg(key) { var m = $("rMsg"); if (key) { setT(m, key); m.hidden = false; } else m.hidden = true; }
+    function setConnectedState(on) {
+      if (on) setPill("r", "ok", "s_ok"); else setPill("r", "wait", "s_wait");
+      updateUI();
+    }
+
+    // ---------- link ----------
+    function setLink(id) {
+      lastId = id;
+      var link = location.origin + location.pathname + "?join=" + id + "&lang=" + lang;
+      $("linkBox").value = link;
+      $("waBtn").href = "https://wa.me/?text=" + encodeURIComponent(t("wa_msg") + " " + link);
+      $("shareBtn").onclick = function () {
+        if (navigator.share) navigator.share({ title: t("app_camera"), text: t("wa_msg"), url: link }).catch(function () {});
+        else copyLink();
+      };
+    }
+    function copyLink() {
+      var box = $("linkBox"), v = box.value;
+      function fallback() { box.focus(); box.select(); try { document.execCommand("copy"); toast(t("copied")); } catch (e) { toast(t("copy_hold")); } }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(v).then(function () { toast(t("copied")); }, fallback);
+      else fallback();
+    }
+    $("copyBtn").addEventListener("click", copyLink);
+    $("linkBox").value = t("link_making");
+
+    // ---------- filters UI ----------
+    var fbox = $("filters");
+    FILTERS.forEach(function (f) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.dataset.f = f.id;
+      b.setAttribute("aria-pressed", f.id === "none"); setT(b, "f_" + f.id);
+      b.addEventListener("click", function () {
+        filterId = f.id;
+        Array.prototype.forEach.call(fbox.children, function (c) { c.setAttribute("aria-pressed", c.dataset.f === filterId); });
+        $("rVideo").style.filter = cssFilter(f.ops);
+      });
+      fbox.appendChild(b);
+    });
+
+    // ---------- connection ----------
+    function startPeer() {
+      if (!hasPeer()) { setPill("r", "bad", "s_lib"); toast(t("net_lib"), 4000); return; }
+      if (peer) { try { peer.destroy(); } catch (e) {} }
+      peer = new Peer(myId, { config: { iceServers: ICE_SERVERS } });
+      peer.on("open", function (id) {
+        try { localStorage.setItem("rc_id", id); } catch (e) {}
+        setLink(id); setConnectedState(false);
+      });
+      peer.on("connection", function (c) {
+        if (conn && conn.open) { try { conn.close(); } catch (e) {} }
+        conn = c;
+        c.on("open", function () { setConnectedState(true); toast(t("cam_on")); });
+        c.on("data", onData);
+        c.on("close", function () {
+          if (conn !== c) return;
+          setConnectedState(false); setRecording(false); setStageMsg("stage_lost");
+        });
+        c.on("error", function () { setConnectedState(false); });
+      });
+      peer.on("call", function (call) {
+        call.answer();
+        call.on("stream", function (s) {
+          var v = $("rVideo"); v.srcObject = s; setStageMsg(null);
+          var p = v.play(); if (p && p.catch) p.catch(function () {});
+        });
+        call.on("close", function () { setStageMsg("stage_end"); });
+      });
+      peer.on("disconnected", function () { setPill("r", "bad", "s_srv"); try { peer.reconnect(); } catch (e) {} });
+      peer.on("error", function (e) {
+        if (e && e.type === "unavailable-id") { myId = randId(); startPeer(); return; }
+        setPill("r", "bad", "s_err");
+      });
+    }
+
+    function send(o) { if (connected()) { conn.send(o); return true; } toast(t("no_cam")); return false; }
+
+    // ---------- incoming data ----------
+    function onData(d) {
+      if (!d || !d.t) return;
+      if (d.t === "info") { camCanRec = d.canRec !== false; }
+      else if (d.t === "rec") { setRecording(!!d.on); }
+      else if (d.t === "fs") { rx[d.id] = { kind: d.kind, type: d.type, size: d.size, parts: [], got: 0 }; }
+      else if (d.t === "fc") {
+        var r = rx[d.id]; if (!r) return;
+        r.parts.push(d.buf); r.got += d.buf.byteLength;
+        if (r.kind === "video" && r.size) { var el = $("rxInfo"); setT(el, "rx", { n: Math.min(99, Math.floor(r.got * 100 / r.size)) }); el.hidden = false; }
+      }
+      else if (d.t === "fe") { finishRx(d.id); }
+      else if (d.t === "err") { endPending(); recPending = false; clearTimeout(recTimer); updateUI(); toast(t(d.k || "e_gen"), 3600); }
+    }
+    async function finishRx(id) {
+      var r = rx[id]; delete rx[id];
+      if (!r) return;
+      $("rxInfo").hidden = true;
+      if (items.some(function (x) { return x.id === id; })) { endPending(); return; }
+      var blob = new Blob(r.parts, { type: r.type || (r.kind === "video" ? "video/mp4" : "image/jpeg") });
+      if (r.kind === "photo") {
+        var fid = shotFilter[id] || "none"; delete shotFilter[id];
+        blob = await bakeFilter(blob, fid);
+        flash($("rFlash")); endPending(); toast(t("got_photo"));
+      } else toast(t("got_video"));
+      var item = { id: id, ts: Date.now(), kind: r.kind, blob: blob };
+      items.push(item); dbPut({ id: item.id, ts: item.ts, kind: item.kind, blob: item.blob }); renderGrid();
+    }
+
+    // ---------- photo ----------
+    function endPending() { pending = false; clearTimeout(pendingTimer); updateUI(); }
+    function fireShot() {
+      if (pending) return;
+      var id = "p" + Date.now() + Math.floor(Math.random() * 1000);
+      shotFilter[id] = filterId;
+      if (!send({ t: "shot", id: id })) return;
+      pending = true; updateUI();
+      pendingTimer = setTimeout(function () { endPending(); toast(t("slow")); }, 20000);
+    }
+
+    // ---------- video ----------
+    function fmtTime(ms) { var s = Math.floor(ms / 1000), m = Math.floor(s / 60); s = s % 60; return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0"); }
+    function setRecording(on) {
+      recording = on; recPending = false; clearTimeout(recTimer);
+      clearInterval(recIv);
+      if (on) {
+        recT0 = Date.now(); $("rTime").textContent = "00:00"; $("rRec").hidden = false;
+        recIv = setInterval(function () { $("rTime").textContent = fmtTime(Date.now() - recT0); }, 500);
+      } else $("rRec").hidden = true;
+      updateUI();
+    }
+    function toggleRec() {
+      if (recording) {
+        if (!send({ t: "rec", on: false })) return;
+      } else {
+        if (!camCanRec) { toast(t("no_rec")); return; }
+        if (!send({ t: "rec", on: true, id: "v" + Date.now() + Math.floor(Math.random() * 1000) })) return;
+      }
+      recPending = true; updateUI();
+      recTimer = setTimeout(function () { recPending = false; updateUI(); }, 10000);
+    }
+
+    // ---------- controls ----------
+    function withTimer(fn) {
+      if (!timerSecs) return fn();
+      counting = true; var n = timerSecs, c = $("rCount"); c.hidden = false; c.textContent = nf(n);
+      var iv = setInterval(function () {
+        n--;
+        if (n <= 0) { clearInterval(iv); c.hidden = true; counting = false; fn(); } else c.textContent = nf(n);
+      }, 1000);
+    }
+    $("shotBtn").addEventListener("click", function () {
+      if (counting || pending || recPending) return;
+      if (mode === "photo") withTimer(fireShot);
+      else if (recording) toggleRec();
+      else withTimer(toggleRec);
+    });
+    $("flipBtn").addEventListener("click", function () { send({ t: "flip" }); });
+    $("timerBtn").addEventListener("click", function () { timerSecs = timerSecs === 0 ? 3 : timerSecs === 3 ? 10 : 0; updateUI(); });
+    $("modePhoto").addEventListener("click", function () { if (!recording) { mode = "photo"; updateUI(); } });
+    $("modeVideo").addEventListener("click", function () {
+      if (recording) return;
+      if (!camCanRec) { toast(t("no_rec")); return; }
+      mode = "video"; updateUI();
+    });
+
+    langHooks.push(function () { if (lastId) setLink(lastId); else $("linkBox").value = t("link_making"); updateUI(); });
+
+    setPill("r", "wait", "s_prep");
+    setStageMsg("stage_msg");
+    updateUI();
+    applyLang();
+    openDb().then(dbAll).then(function (rows) {
+      items = rows.map(function (r) { return { id: r.id, ts: r.ts, kind: r.kind || "photo", blob: r.blob }; });
+      renderGrid();
+    });
+    startPeer();
+  }
+
+  /* =====================================================================
+     Camera phone: runs the camera, takes photos / records video on command
+     ===================================================================== */
+  function initCamera() {
+    $("cameraView").hidden = false;
+    var stream = null, mic = null, facing = "user", peer = null, conn = null, call = null;
+    var started = false, retryTimer = null, wake = null;
+    var rec = null, recChunks = [], recId = null, recTimeout = null, isRec = false;
+    var outQueue = Promise.resolve(), sent = 0, liveKey = "c_live_wait";
+
+    function showErr(key) { var e = $("camErr"); setT(e, key); e.hidden = false; }
+    function setLive(key) { liveKey = key; setT($("liveText"), key); }
+    function notify(o) { if (conn && conn.open) { try { conn.send(o); } catch (e) {} } }
+
+    function acquire(face, withAudio) {
+      return navigator.mediaDevices.getUserMedia({
+        audio: !!withAudio,
+        video: { facingMode: { ideal: face }, width: { ideal: 4096 }, height: { ideal: 2160 } }
+      });
+    }
+    function setStream(raw, face) {
+      if (stream) stream.getTracks().forEach(function (x) { x.stop(); });
+      var a = raw.getAudioTracks()[0]; if (a) mic = a;
+      stream = new MediaStream(raw.getVideoTracks());
+      facing = face;
+      var v = $("cVideo"); v.srcObject = stream;
+      var p = v.play(); if (p && p.catch) p.catch(function () {});
+      if (call && call.peerConnection) {
+        var nt = stream.getVideoTracks()[0];
+        call.peerConnection.getSenders().forEach(function (s) { if (s.track && s.track.kind === "video") s.replaceTrack(nt); });
+      }
+    }
+    async function keepAwake() { try { if ("wakeLock" in navigator) wake = await navigator.wakeLock.request("screen"); } catch (e) {} }
+    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible" && started) keepAwake(); });
+
+    $("startBtn").addEventListener("click", async function () {
+      $("camErr").hidden = true;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { showErr("e_unsup"); return; }
+      $("startBtn").disabled = true;
+      var raw = null, err = null;
+      try { raw = await acquire("user", true); }
+      catch (e1) { try { raw = await acquire("user", false); } catch (e2) { err = e2; } }
+      if (!raw) {
+        $("startBtn").disabled = false;
+        var n = err && err.name;
+        showErr(n === "NotAllowedError" ? "e_denied" : n === "NotFoundError" ? "e_nf" : (n === "NotReadableError" || n === "AbortError") ? "e_busy" : "e_gen");
+        return;
+      }
+      setStream(raw, "user");
+      started = true; keepAwake();
+      $("startCard").hidden = true; $("cStage").hidden = false; $("liveCard").hidden = false;
+      setLive("c_live_wait"); setPill("c", "wait", "s_conn");
+      startPeer();
+    });
+
+    function startPeer() {
+      if (!hasPeer()) { setPill("c", "bad", "s_lib"); setLive("net_lib"); return; }
+      peer = new Peer({ config: { iceServers: ICE_SERVERS } });
+      peer.on("open", connectRemote);
+      peer.on("disconnected", function () { try { peer.reconnect(); } catch (e) {} });
+      peer.on("error", function (e) {
+        if (e && e.type === "peer-unavailable") { setPill("c", "bad", "s_nf"); setLive("c_retry"); }
+        else setPill("c", "bad", "s_err");
+        scheduleRetry();
+      });
+    }
+    function scheduleRetry() {
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(function () {
+        if (conn && conn.open) return;
+        if (peer && !peer.destroyed && peer.open) connectRemote(); else { try { peer && peer.destroy(); } catch (e) {} startPeer(); }
+      }, 3500);
+    }
+    function connectRemote() {
+      if (conn && conn.open) return;
+      conn = peer.connect(joinId, { reliable: true });
+      var c = conn;
+      c.on("open", function () {
+        if (!isRec) { setPill("c", "ok", "s_linked"); setLive("c_live_ok"); }
+        c.send({ t: "info", facing: facing, canRec: !!window.MediaRecorder });
+        if (isRec) c.send({ t: "rec", on: true });
+        try { if (call) call.close(); call = peer.call(joinId, stream); setTimeout(tuneBitrate, 1500); } catch (e) {}
+      });
+      c.on("data", onData);
+      c.on("close", function () { if (conn === c && !isRec) { setPill("c", "wait", "s_conn"); setLive("c_dropped"); } scheduleRetry(); });
+      c.on("error", function () { scheduleRetry(); });
+    }
+    function tuneBitrate() {
+      // Keep the live preview light so it works on slow networks. Saved photos and videos are not affected.
+      try {
+        if (!call || !call.peerConnection) return;
+        call.peerConnection.getSenders().forEach(function (s) {
+          if (!s.track || s.track.kind !== "video") return;
+          var p = s.getParameters(); if (!p.encodings || !p.encodings.length) p.encodings = [{}];
+          p.encodings[0].maxBitrate = 900000; p.encodings[0].scaleResolutionDownBy = 2;
+          s.setParameters(p).catch(function () {});
+        });
+      } catch (e) {}
+    }
+
+    function onData(d) {
+      if (!d || !d.t) return;
+      if (d.t === "shot") capture(d.id);
+      else if (d.t === "flip") { if (!isRec) flip(); }
+      else if (d.t === "rec") { if (d.on) startRec(d.id); else stopRec(); }
+    }
+
+    async function flip() {
+      var next = facing === "user" ? "environment" : "user";
+      try { setStream(await acquire(next, false), next); notify({ t: "info", facing: facing, canRec: !!window.MediaRecorder }); }
+      catch (e) {
+        try { setStream(await acquire(facing, false), facing); } catch (e2) {}
+        notify({ t: "err", k: "e_flip" });
+      }
+    }
+
+    // ---------- photo ----------
+    async function capture(id) {
+      try {
+        flash($("cFlash"));
+        var blob = null, track = stream && stream.getVideoTracks()[0];
+        if (!track) throw new Error("no track");
+        if ("ImageCapture" in window) { try { blob = await new ImageCapture(track).takePhoto(); } catch (e) { blob = null; } }
+        if (!blob) {
+          var v = $("cVideo"), cv = document.createElement("canvas");
+          cv.width = v.videoWidth; cv.height = v.videoHeight;
+          if (!cv.width) throw new Error("no frame");
+          cv.getContext("2d").drawImage(v, 0, 0);
+          blob = await new Promise(function (r) { cv.toBlob(r, "image/jpeg", 0.92); });
+        }
+        enqueue({ kind: "photo", id: id, blob: blob });
+      } catch (e) { notify({ t: "err", k: "e_shot" }); }
+    }
+
+    // ---------- video ----------
+    function pickMime() {
+      var list = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
+      for (var i = 0; i < list.length; i++) { try { if (MediaRecorder.isTypeSupported(list[i])) return list[i]; } catch (e) {} }
+      return "";
+    }
+    function startRec(id) {
+      if (isRec) return;
+      if (!window.MediaRecorder || !stream) { notify({ t: "err", k: "no_rec" }); return; }
+      try {
+        var tracks = stream.getVideoTracks().slice();
+        if (mic && mic.readyState === "live") tracks.push(mic);
+        var mime = pickMime();
+        rec = new MediaRecorder(new MediaStream(tracks), mime ? { mimeType: mime, videoBitsPerSecond: 6000000 } : { videoBitsPerSecond: 6000000 });
+        recChunks = []; recId = id;
+        rec.ondataavailable = function (e) { if (e.data && e.data.size) recChunks.push(e.data); };
+        rec.onstop = function () {
+          clearTimeout(recTimeout); isRec = false;
+          var type = (rec.mimeType || mime || "video/webm").split(";")[0];
+          var blob = new Blob(recChunks, { type: type }); recChunks = [];
+          setPill("c", "wait", "s_send"); setLive("c_send");
+          notify({ t: "rec", on: false });
+          enqueue({ kind: "video", id: recId, blob: blob });
+        };
+        rec.onerror = function () { notify({ t: "err", k: "e_rec" }); };
+        rec.start(1000);
+        isRec = true;
+        setPill("c", "rec", "s_rec"); setLive("c_rec");
+        notify({ t: "rec", on: true });
+        recTimeout = setTimeout(stopRec, 5 * 60 * 1000);
+      } catch (e) { isRec = false; notify({ t: "err", k: "e_rec" }); }
+    }
+    function stopRec() { clearTimeout(recTimeout); if (rec && rec.state !== "inactive") { try { rec.stop(); } catch (e) {} } }
+
+    // ---------- sending (photos and videos share one chunked transfer) ----------
+    function enqueue(item) { outQueue = outQueue.then(function () { return transfer(item); }).catch(function () {}); }
+    function untilOpen() { return new Promise(function (res) { (function chk() { if (conn && conn.open) res(); else setTimeout(chk, 500); })(); }); }
+    async function sendOnce(item) {
+      var c = conn, size = item.blob.size, CH = 65536;
+      if (!c || !c.open) throw { drop: 1 };
+      c.send({ t: "fs", id: item.id, kind: item.kind, type: item.blob.type || (item.kind === "video" ? "video/mp4" : "image/jpeg"), size: size });
+      for (var off = 0; off < size; off += CH) {
+        var buf = await item.blob.slice(off, off + CH).arrayBuffer();
+        while (c.open && c.dataChannel && c.dataChannel.bufferedAmount > 1048576) await sleep(40);
+        if (!c.open || c !== conn) throw { drop: 1 };
+        c.send({ t: "fc", id: item.id, buf: buf });
+      }
+      c.send({ t: "fe", id: item.id });
+    }
+    async function transfer(item) {
+      for (;;) {
+        await untilOpen();
+        try { await sendOnce(item); break; } catch (e) { if (e && e.drop) continue; break; }
+      }
+      sent++; setT($("sentCount"), "c_sent", { n: sent });
+      if (!isRec) { setPill("c", "ok", "s_linked"); setLive("c_live_ok"); }
+    }
+
+    langHooks.push(function () { /* dynamic texts are re-rendered by data-k */ });
+    setPill("c", "wait", "c_status_wait");
+    applyLang();
+  }
+
+  /* ---------- start ---------- */
+  initLang();
+  if (joinId) initCamera(); else initRemote();
+  applyLang();
+})();
+</script>
+</body>
+</html>
